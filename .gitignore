@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.env
+venv/
+env/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Large model file (regenerate with python src/train.py)
+models/queue_model.pkl
+
+# Outputs (regenerate with training)
+outputs/model_comparison.png
+outputs/feature_importance.png
+outputs/prediction_logs.csv
+outputs/feedback.csv
