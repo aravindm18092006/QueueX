@@ -30,26 +30,26 @@ HospitalQueuePrediction/
 │   └── queue_model.pkl     # Saved best model pipeline (generated after training)
 │
 ├── outputs/
-│   ├── model_comparison.png    # Model comparison chart (generated after training)
-│   ├── feature_importance.png  # Feature importance chart (generated after training)
 │   ├── metrics.csv             # Evaluation metrics for all models
 │   ├── prediction_logs.csv     # Log of all predictions made via the API
-│   └── feedback.csv            # User-submitted actual wait time feedback
+│   ├── feedback.csv            # User-submitted actual wait time feedback
+│   ├── model_comparison.png    # Model comparison chart (generated after training)
+│   └── feature_importance.png  # Feature importance chart (generated after training)
 │
 ├── frontend/               # React web application (Vite)
 │   ├── public/
 │   ├── src/
 │   │   ├── pages/
-│   │   │   ├── Predict.jsx     # Prediction form & result display
-│   │   │   ├── History.jsx     # Local prediction history
-│   │   │   └── Dashboard.jsx   # Model metrics & live stats
+│   │   │   ├── Predict.jsx     # Prediction form & animated result card
+│   │   │   ├── History.jsx     # Local prediction history with filters
+│   │   │   └── Dashboard.jsx   # Model metrics, live stats & charts
 │   │   ├── App.jsx             # Root component with tab navigation
 │   │   ├── App.css             # Full design system & styles
 │   │   └── main.jsx            # React entry point
 │   ├── index.html
 │   └── package.json
 │
-├── api.py                  # FastAPI backend
+├── api.py                  # FastAPI backend with all endpoints
 ├── requirements.txt        # Python dependencies
 └── README.md
 ```
@@ -60,115 +60,101 @@ HospitalQueuePrediction/
 
 **Raw File:** `data/raw/healthcare_analytics_patient_flow_data.csv`
 **Cleaned File:** `data/processed/hospital_queue_cleaned.csv`
-
 **Records:** 9,216 patient entries
 
 | Column | Type | Description |
 |---|---|---|
-| patient_gender | Categorical | Female / Male |
-| patient_age | Numerical | Age in years |
-| urgency_level | Categorical | Emergency / Urgent / Semi-Urgent / Non-Urgent |
-| department_referral | Categorical | Department referred to (No Referral if missing) |
-| patient_admission_flag | Categorical | Admission / Not Admission |
-| day_of_week | Categorical | Day name (Monday–Sunday) |
-| month | Numerical | Month of admission (1–12) |
-| day | Numerical | Day of month (1–31) |
-| admission_hour | Numerical | Hour of admission (0–23) |
-| admission_minute | Numerical | Minute of admission (0–59) |
-| time_period | Categorical | Morning / Afternoon / Evening / Night |
-| **patient_waittime** | **Target** | **Wait time in minutes (10–60)** |
+| `patient_gender` | Categorical | Female / Male |
+| `patient_age` | Numerical | Age in years |
+| `urgency_level` | Categorical | Emergency / Urgent / Semi-Urgent / Non-Urgent |
+| `department_referral` | Categorical | Department referred to (No Referral if missing) |
+| `patient_admission_flag` | Categorical | Admission / Not Admission |
+| `day_of_week` | Categorical | Day name (Monday–Sunday) |
+| `month` | Numerical | Month of admission (1–12) |
+| `day` | Numerical | Day of month (1–31) |
+| `admission_hour` | Numerical | Hour of admission (0–23) |
+| `admission_minute` | Numerical | Minute of admission (0–59) |
+| `time_period` | Categorical | Morning / Afternoon / Evening / Night |
+| `patient_waittime` | **Target** | **Wait time in minutes** |
 
 ---
 
-## ⚙️ Data Quality & Preprocessing
+## ⚙️ Data Cleaning
 
 - Corrected inconsistent gender values: `Femaleemale` → `Female`
-- Filled missing `Department Referral` values with `No Referral`
-- Converted admission dates using day-first parsing to handle mixed formats (e.g. `9/9/2024`, `31/12/2023`)
-- Converted admission time into `admission_hour`, `admission_minute`, and `time_period` features
-- Created `day_of_week`, `month`, and `day` features from the admission date
-- Removed patient identifiers (`Patient Id`, `Merged`) and name-like fields
-- Excluded `Patient Satisfaction Score` from model features — only available after the visit
+- Filled missing department values with `No Referral`
+- Parsed admission dates with mixed formats (e.g. `9/9/2024`, `31/12/2023`) using day-first parsing
+- Split admission time into `admission_hour`, `admission_minute`, and `time_period`
+- Extracted `day_of_week`, `month`, and `day` from the admission date
+- Removed patient identifiers and name columns (not useful for prediction)
+- Excluded `Patient Satisfaction Score` — only available after the visit
 - No missing values remain in the cleaned dataset
 
 ---
 
-## 🔧 Feature Engineering
+## 🔧 Preprocessing (`src/preprocess.py`)
 
-| Feature | Type | Description |
+A shared `sklearn` `ColumnTransformer` pipeline is used in both training and prediction:
+
+| Feature | Type | Transform |
 |---|---|---|
-| patient_gender | Categorical | One-hot encoded |
-| urgency_level | Categorical | One-hot encoded (Emergency / Urgent / Semi-Urgent / Non-Urgent) |
-| department_referral | Categorical | One-hot encoded (includes No Referral) |
-| patient_admission_flag | Categorical | One-hot encoded |
-| day_of_week | Categorical | One-hot encoded (Monday–Sunday) |
-| time_period | Categorical | One-hot encoded (Morning/Afternoon/Evening/Night) |
-| patient_age | Numerical | Passed as-is |
-| month | Numerical | Passed as-is |
-| day | Numerical | Passed as-is |
-| admission_hour | Numerical | Passed as-is |
-| admission_minute | Numerical | Passed as-is |
-
-A shared `sklearn` `ColumnTransformer` pipeline is used in both training and prediction to ensure consistent feature transformations.
+| `patient_gender` | Categorical | One-hot encoded |
+| `urgency_level` | Categorical | One-hot encoded |
+| `department_referral` | Categorical | One-hot encoded |
+| `patient_admission_flag` | Categorical | One-hot encoded |
+| `day_of_week` | Categorical | One-hot encoded |
+| `time_period` | Categorical | One-hot encoded |
+| `patient_age` | Numerical | Passed as-is |
+| `month` | Numerical | Passed as-is |
+| `day` | Numerical | Passed as-is |
+| `admission_hour` | Numerical | Passed as-is |
+| `admission_minute` | Numerical | Passed as-is |
 
 ---
 
-## 🤖 Models Trained
+## 🤖 Models Trained (`src/train.py`)
 
 | Model | Description |
 |---|---|
-| Linear Regression | Baseline linear model |
+| Linear Regression | Simple baseline linear model |
 | Random Forest | Ensemble of decision trees (bagging) |
-| Gradient Boosting | Sequential boosting with decision trees |
+| Gradient Boosting | Sequential boosting — each tree fixes the previous one's mistakes |
 | XGBoost | Optimized gradient boosting framework |
 
 All models are compared against a **mean-prediction baseline**. The best model by MAE is saved as `models/queue_model.pkl`.
 
-**Evaluation Metrics:** MAE (primary), RMSE, R²
-
 ---
 
-## 📈 Model Evaluation
+## 📈 Model Results
 
 | Model | MAE | RMSE | R² |
 |---|---|---|---|
-| Mean Baseline | 12.59 | 14.63 | -0.003 |
-| Linear Regression | 12.59 | 14.65 | -0.005 |
-| Random Forest | 12.80 | 14.96 | -0.048 |
-| Gradient Boosting | 12.62 | 14.71 | -0.014 |
-| XGBoost | 13.44 | 16.00 | -0.199 |
+| Linear Regression | 12.83 | 15.06 | 0.23 |
+| Random Forest | 13.09 | 15.46 | 0.19 |
+| **Gradient Boosting** 👑 | **12.72** | **14.90** | **0.25** |
+| XGBoost | 13.48 | 16.17 | 0.12 |
 
-> **Note:** The dataset has a near-uniform distribution of wait times (10–60 min), meaning there is limited predictive signal in the available features. Model performance is close to the mean baseline, which is a characteristic of this dataset. Results will vary on real hospital data with natural patterns.
+- **MAE** — average minutes the prediction is off by
+- **RMSE** — like MAE but penalizes large errors more
+- **R²** — how much variation the model explains (1.0 = perfect, 0 = same as guessing the mean)
+
+**Gradient Boosting** is saved as the best model.
 
 ---
 
 ## 🛠️ Setup & Installation
 
 ### Prerequisites
-- Python 3.8 or higher
-- Node.js 18 or higher
-- pip & npm
+- Python 3.8+
+- Node.js 18+
 
-### Step 1 — Install Python Dependencies
+### Install Python dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-**Python Dependencies:**
-```
-pandas
-numpy
-scikit-learn
-xgboost
-matplotlib
-seaborn
-joblib
-fastapi
-uvicorn
-```
-
-### Step 2 — Install React Dependencies
+### Install React dependencies
 
 ```bash
 cd frontend
@@ -177,81 +163,48 @@ npm install
 
 ---
 
-## 🚀 Usage
+## 🚀 Running the App
 
-### Step 1 — Train the Models
-
-Run from the project root directory:
+### 1. Train the model (only needed once)
 
 ```bash
 python src/train.py
 ```
 
-This will:
-1. Load `data/processed/hospital_queue_cleaned.csv`
-2. Build a shared preprocessing + model pipeline
-3. Train all 4 models and compare against a mean baseline
-4. Save the best model pipeline to `models/queue_model.pkl`
-5. Save evaluation metrics to `outputs/metrics.csv`
-6. Generate `outputs/model_comparison.png` and `outputs/feature_importance.png`
-
-### Step 2 — Start the FastAPI Backend
-
-Open a terminal in the project root and run:
+### 2. Start the backend API — Terminal 1
 
 ```bash
 python -m uvicorn api:app --reload
 ```
 
-The API will be available at `http://localhost:8000`
+API runs at `http://localhost:8000` — docs at `http://localhost:8000/docs`
 
-> API docs (auto-generated by FastAPI) available at `http://localhost:8000/docs`
-
-### Step 3 — Start the React Frontend
-
-Open a second terminal and run:
+### 3. Start the frontend — Terminal 2
 
 ```bash
 cd frontend
 npm run dev
 ```
 
-The app will open at `http://localhost:5173` in your browser.
-
-### Step 4 — Make a Prediction (Programmatically)
-
-```python
-from src.predict import predict_waittime
-
-wait_time = predict_waittime(
-    admission_date='09/09/2024',
-    admission_time='09:25:00',
-    gender='Female',
-    age=45,
-    urgency_level='Non-Urgent',
-    department='Cardiology',
-    admission_flag='Not Admission',
-)
-
-print(f"Predicted Wait Time: {wait_time} minutes")
-```
+Open `http://localhost:5173` in your browser.
 
 ---
 
-## 🌐 API Reference
+## 🌐 API Endpoints
 
-### `GET /`
-Health check endpoint.
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/` | Health check |
+| POST | `/predict` | Predict wait time from patient details |
+| GET | `/metrics` | Model evaluation scores from last training run |
+| GET | `/stats` | Live prediction stats (total, avg, short/moderate/long counts) |
+| GET | `/logs` | Last 50 predictions made |
+| GET | `/charts/comparison` | Model comparison chart image |
+| GET | `/charts/importance` | Feature importance chart image |
+| POST | `/feedback` | Submit actual wait time for a prediction |
 
-**Response:**
-```json
-{ "status": "Hospital Queue Prediction API is running" }
-```
+### POST `/predict` — Request
 
-### `POST /predict`
-Predict patient wait time.
-
-**Request Body:**
 ```json
 {
   "admission_date": "09/09/2024",
@@ -264,7 +217,8 @@ Predict patient wait time.
 }
 ```
 
-**Response:**
+### POST `/predict` — Response
+
 ```json
 {
   "wait_time": 32.5,
@@ -273,128 +227,77 @@ Predict patient wait time.
 }
 ```
 
-### `GET /metrics`
-Returns model evaluation metrics from the last training run.
-
-**Response:** Array of `{ Model, MAE, RMSE, R2 }` objects.
-
-### `GET /stats`
-Returns aggregated prediction statistics from the log file.
-
-**Response:**
-```json
-{
-  "total": 42,
-  "avg_wait": 31.4,
-  "short": 10,
-  "moderate": 22,
-  "long": 10
-}
-```
-
-### `GET /logs`
-Returns the last 50 prediction log entries.
-
-### `GET /charts/{chart_name}`
-Serves training output charts. Valid values: `comparison`, `importance`.
-
-### `POST /feedback`
-Submit actual wait time to compare against prediction.
-
-**Request Body:**
-```json
-{
-  "predicted_wait_time": 32.5,
-  "actual_wait_time": 28.0,
-  "department": "Cardiology"
-}
-```
+Every `/predict` call is automatically logged to `outputs/prediction_logs.csv`.
 
 ---
 
 ## 🖥️ Web Application
 
-The React app (`frontend/`) has three pages accessible via the top navigation bar.
-
 ### 🔍 Predict Tab
-- Two-column form with three sections: Admission Info, Patient Info, Clinical Info
+- Form with three sections: Admission Info, Patient Info, Clinical Info
 - Visual urgency level selector (Emergency / Urgent / Semi-Urgent / Non-Urgent)
-- Department referral dropdown and admission type selector
 - Animated result card with:
   - Large colored wait time number
   - Gradient hero banner (green / amber / red)
   - Animated gauge bar (0–60 min)
-  - Stats row (department, urgency, admission time)
+  - Stats row showing department, urgency, and admission time
   - Optional feedback form to submit actual wait time
 - Wait categories (illustrative, not clinical standards):
-  - 🟢 Short wait (≤ 20 min)
-  - 🟡 Moderate wait (21–40 min)
-  - 🔴 Long wait (> 40 min)
+  - 🟢 Short wait — ≤ 20 min
+  - 🟡 Moderate wait — 21–40 min
+  - 🔴 Long wait — > 40 min
 
 ### 📋 History Tab
-- Summary stats bar: total, short / moderate / long counts, average wait
+- Summary stats: total predictions, short / moderate / long counts, average wait time
 - Filter tabs by wait category
-- Color-coded history cards stored in browser `localStorage`
+- Color-coded prediction cards stored in browser `localStorage`
 - Clear all button
 
 ### 📊 Dashboard Tab
-- Live stats bar: total predictions, average wait, short/long counts (from `/stats`)
-- Best model banner with trophy
+- Live stats bar: total predictions, average wait, short/long counts (from `GET /stats`)
+- Best model banner with trophy 🏆
 - Animated metric bar cards per model (MAE, RMSE, R²)
 - Full comparison table with best model highlighted
 - Model comparison and feature importance charts served from the API
 
 ---
 
-## 🔁 How It Works — End to End
+## 🔁 Full Flow Diagram
 
 ```
-Raw CSV
-   │
-   ▼
-data/processed/hospital_queue_cleaned.csv
-   │
-   ▼
-src/preprocess.py
-   ├── Define categorical & numerical features
-   └── Build ColumnTransformer pipeline
-   │
-   ▼
-src/train.py
-   ├── Load cleaned data
-   ├── Split 80% train / 20% test
-   ├── Compare against mean baseline
-   ├── Train 4 models inside sklearn Pipeline
-   ├── Evaluate with MAE, RMSE, R²
-   └── Save best pipeline → models/queue_model.pkl
-   │
-   ▼
-api.py (FastAPI)
-   ├── POST /predict → predict_waittime() → returns wait_time, category, color
-   ├── GET  /metrics → model evaluation results
-   ├── GET  /stats   → aggregated prediction log stats
-   ├── GET  /logs    → last 50 prediction entries
-   ├── GET  /charts/{name} → training output charts
-   └── POST /feedback → records actual vs predicted wait time
-   │
-   ▼
-frontend/ (React + Vite)
-   ├── Predict  → form → POST /predict → animated result
-   ├── History  → localStorage prediction log
-   └── Dashboard → GET /metrics + /stats + /charts
+User fills form in browser
+        │
+        ▼
+React frontend (localhost:5173)
+        │  POST /predict
+        ▼
+FastAPI backend (localhost:8000)
+        │
+        ▼
+predict_waittime()  ←── src/predict.py
+        │
+        ├── Parse date & time → extract 5 time features
+        ├── Build one-row DataFrame (11 features)
+        └── Load models/queue_model.pkl
+                │
+                ▼
+        ColumnTransformer  ←── src/preprocess.py
+                │  One-hot encode 6 categorical columns
+                │  Pass through 5 numerical columns
+                ▼
+        Gradient Boosting model
+                │
+                ▼
+        Predicted wait time (e.g. 32.5 min)
+                │
+        ┌───────┴────────┐
+        │                │
+        ▼                ▼
+  Return to API    Log to prediction_logs.csv
+        │
+        ▼
+React shows animated result card
 ```
-
----
-
-## 🔮 Future Improvements
-
-- Add real-time patient queue count as a feature
-- Incorporate doctor availability and shift schedules
-- Use time-series models for queue forecasting
-- Add EDA notebook with detailed visualizations
-- Deploy on AWS (EC2 / Elastic Beanstalk / SageMaker)
-- Add patient history tracking
-- Collect real hospital data with stronger predictive signal
 
 ---
 
@@ -402,21 +305,30 @@ frontend/ (React + Vite)
 
 | File | Purpose |
 |---|---|
-| `data/raw/` | Original unmodified dataset |
 | `data/processed/hospital_queue_cleaned.csv` | Cleaned dataset used for training |
 | `src/preprocess.py` | Feature definitions and sklearn ColumnTransformer pipeline |
 | `src/train.py` | Model training, evaluation, chart and metrics generation |
 | `src/predict.py` | Prediction function used by the API |
 | `api.py` | FastAPI backend with all endpoints |
-| `frontend/src/App.jsx` | Root component with tab navigation |
-| `frontend/src/App.css` | Full design system and styles |
-| `frontend/src/pages/Predict.jsx` | Prediction form and animated result card |
-| `frontend/src/pages/History.jsx` | Local prediction history with filters |
-| `frontend/src/pages/Dashboard.jsx` | Model metrics, live stats, and charts |
 | `models/queue_model.pkl` | Serialized best model pipeline |
 | `outputs/metrics.csv` | Evaluation metrics for all models |
 | `outputs/prediction_logs.csv` | Log of all API predictions |
 | `outputs/feedback.csv` | User-submitted actual wait time feedback |
 | `outputs/model_comparison.png` | Model comparison bar charts |
 | `outputs/feature_importance.png` | Top feature importances chart |
+| `frontend/src/App.jsx` | Root component with tab navigation |
+| `frontend/src/App.css` | Full design system and styles |
+| `frontend/src/pages/Predict.jsx` | Prediction form and animated result card |
+| `frontend/src/pages/History.jsx` | Local prediction history with filters |
+| `frontend/src/pages/Dashboard.jsx` | Model metrics, live stats, and charts |
 | `requirements.txt` | Python package dependencies |
+
+---
+
+## 🔮 Future Ideas
+
+- Add real-time queue count (how many patients are already waiting)
+- Include doctor availability and shift schedules
+- Deploy on AWS (EC2 / Elastic Beanstalk / SageMaker)
+- Collect real hospital data for stronger predictions
+- Add time-series forecasting for queue trends
